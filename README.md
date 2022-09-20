@@ -122,11 +122,23 @@ Where `options` is an object and can contain the following:
       Datadog-metrics looks for the APP key in `DATADOG_APP_KEY` by default.
 * `defaultTags`: Default tags used for all metric reporting. (optional)
     * Set tags that are common to all metrics.
+* `reporter`: An object that actually sends the buffered metrics. (optional)
+    * There are two built-in reporters you can use:
+        1. `reporters.DataDogReporter` sends metrics to DataDog’s API, and is
+           the default.
+        2. `reporters.NullReporter` throws the metrics away. It’s useful for
+           tests or temporarily disabling your metrics.
 
 Example:
 
 ```js
 metrics.init({ host: 'myhost', prefix: 'myapp.' });
+```
+
+Disabling metrics using `NullReporter`:
+
+```js
+metrics.init({ host: 'myhost', reporter: metrics.NullReporter() });
 ```
 
 
@@ -166,11 +178,11 @@ metrics.increment('test.awesomeness_factor', 10);
 
 ### Histograms
 
-`metrics.histogram(key, value[, tags[, timestamp]])`
+`metrics.histogram(key, value[, tags[, timestamp[, options]]])`
 
 Sample a histogram value. Histograms will produce metrics that
 describe the distribution of the recorded values, namely the minimum,
-maximum, average, count and the 75th, 85th, 95th and 99th percentiles.
+maximum, average, median, count and the 75th, 85th, 95th and 99th percentiles.
 Optionally, specify a list of *tags* to associate with the metric.
 The optional timestamp is in milliseconds since 1 Jan 1970 00:00:00 UTC,
 e.g. from `Date.now()`.
@@ -179,6 +191,44 @@ Example:
 
 ```js
 metrics.histogram('test.service_time', 0.248);
+```
+
+You can also specify an options object to adjust which aggregations and
+percentiles should be calculated. For example, to only calculate an average,
+count, and 99th percentile:
+
+```js
+metrics.histogram('test.service_time', 0.248, ['tag:value'], Date.now(), {
+    // Aggregates can include 'max', 'min', 'sum', 'avg', 'median', or 'count'.
+    aggregates: ['avg', 'count'],
+    // Percentiles can include any decimal between 0 and 1.
+    percentiles: [0.99]
+});
+```
+
+### Distributions
+
+`metrics.distribution(key, value[, tags[, timestamp]])`
+
+Send a distribution value. Distributions are similar to histograms (they create
+several metrics for count, average, percentiles, etc.), but they are calculated
+server-side on DataDog’s systems. This is much higher-overhead than histograms,
+and the individual calculations made from it have to be configured on the
+DataDog website instead of in the options for this package.
+
+You should use this in environments where you have many instances of your
+application running in parallel, or instances constantly starting and stopping
+with different hostnames or identifiers and tagging each one separately is not
+feasible. AWS Lambda or serverless functions are a great example of this. In
+such environments, you also might want to use a distribution instead of
+`increment` or `gauge` (if you have two instances of your app sending those
+metrics at the same second, and they are not tagged differently or have
+different `host` names, one will overwrite the other — distributions will not).
+
+Example:
+
+```js
+metrics.distribution('test.service_time', 0.248);
 ```
 
 ### Flushing
